@@ -1,0 +1,14 @@
+oshkosh = LOAD 'hdfs:/user/maria_dev/final/Oshkosh/OshkoshWeather.csv' using PigStorage(',');
+filtered = FILTER oshkosh BY $4 > -9999;
+addseason = FOREACH filtered GENERATE ($1==1 ? 'Winter' : ($1==2  ? 'Winter' : ($1==3 ? 'Spring' : ($1==4 ? 'Spring' : ($1==5 ? 'Spring' : ($1==6 ? 'Summer' : ($1==7 ? 'Summer' : ($1==8 ? 'Summer' : ($1==9 ? 'Fall' : ($1==10 ? 'Fall' : ($1==11 ? 'Fall' : ($1==12 ? 'Winter' : $1)))))))))))) AS season, $4 AS temperature;
+oshkoshgrouped = GROUP addseason BY season;
+oshkoshflatten = FOREACH oshkoshgrouped GENERATE FLATTEN(group) AS season, SUM(addseason.temperature) AS temperature, COUNT(addseason.temperature);
+oshkoshcalc = FOREACH oshkoshflatten GENERATE $0 AS season, ($1/$2) AS average;
+iowa = LOAD 'hdfs:/user/maria_dev/final/IowaCity/IowaCityWeather.csv' using PigStorage(',');
+filtered2 = FILTER iowa BY $4 > -9999;
+addseason = FOREACH filtered2 GENERATE ($1==1 ? 'Winter' : ($1==2  ? 'Winter' : ($1==3 ? 'Spring' : ($1==4 ? 'Spring' : ($1==5 ? 'Spring' : ($1==6 ? 'Summer' : ($1==7 ? 'Summer' : ($1==8 ? 'Summer' : ($1==9 ? 'Fall' : ($1==10 ? 'Fall' : ($1==11 ? 'Fall' : ($1==12 ? 'Winter' : $1)))))))))))) AS season, $4 AS temperature;
+iowagrouped = GROUP addseason BY season;
+iowaflatten = FOREACH iowagrouped GENERATE FLATTEN(group) AS season, SUM(addseason.temperature) AS temperature, COUNT(addseason.temperature);
+iowacalc = FOREACH iowaflatten GENERATE $0 AS season, ($1/$2) AS average;
+DUMP oshkoshcalc;
+DUMP iowacalc;

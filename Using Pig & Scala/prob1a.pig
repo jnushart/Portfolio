@@ -1,0 +1,13 @@
+oshkosh = LOAD 'hdfs:/user/maria_dev/final/Oshkosh/OshkoshWeather.csv' using PigStorage(',');
+filtered = FILTER oshkosh BY $4 > -9999;
+weather = FOREACH filtered GENERATE CONCAT($1, '/', $2, '/', $0) AS monthdayyear, $4 AS temperature;
+grouped_data = GROUP weather BY monthdayyear;
+grouped = FOREACH grouped_data GENERATE FLATTEN(group) AS monthdayyear, MIN(weather.temperature) AS mintemp, MAX(weather.temperature) AS maxtemp;
+colddays = FILTER grouped BY $1 <= -10;
+warmdays = FILTER grouped BY $2 >= 95;
+coldgroupall = GROUP colddays ALL;
+coldcount = FOREACH coldgroupall GENERATE COUNT(colddays.monthdayyear) AS count;
+warmgroupall = GROUP warmdays ALL;
+warmcount = FOREACH warmgroupall GENERATE COUNT(warmdays.monthdayyear) AS count;
+DUMP coldcount;
+DUMP warmcount;
