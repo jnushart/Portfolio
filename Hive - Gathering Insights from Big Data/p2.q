@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS master;
+CREATE EXTERNAL TABLE IF NOT EXISTS master(id STRING, byear INT, bmonth INT, bday INT, bcountry STRING, bstate STRING, bcity STRING, dyear INT, dmonth INT, dday INT, dcountry STRING, dstate STRING, dcity STRING, fname STRING, lname STRING, name STRING, weight INT, height INT, bats STRING, throws STRING, debut STRING, finalgame STRING, retro STRING, bbref STRING) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/master'; 
+DROP VIEW IF EXISTS mostplayers;
+CREATE VIEW mostplayers AS SELECT cast(cast(bmonth as BIGINT) as string) AS bmonth, cast(cast(bday as BIGINT)  as string) AS bday, count(*) AS players FROM master WHERE bmonth is not null AND bday is not null GROUP BY bmonth, bday ORDER BY players;
+SELECT CONCAT_WS('/',subquery.bmonth,subquery.bday) AS birthmd FROM (SELECT mostplayers.bmonth, mostplayers.bday, mostplayers.players, RANK() OVER (ORDER BY players DESC) AS rank FROM mostplayers) subquery WHERE subquery.rank <=3;
