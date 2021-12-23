@@ -1,0 +1,200 @@
+---
+author: "Jordan Nushart"
+output: word_document
+fontsize: 12pt
+---
+
+```{r echo=FALSE, message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+library(knitr)
+library(kader)
+```
+
+```{r echo=FALSE, message=FALSE}
+
+loans <- read.csv(file="loans50k.csv", header=TRUE, sep=",")
+```
+
+```{r echo=FALSE}
+df <- subset(loans, select=-c(verified, loanID, employment))
+
+```
+
+```{r echo=FALSE}
+df$status <- ifelse(df$status == "Fully Paid", 1, ifelse(df$status == "Default", 0, ifelse(df$status == "Charged Off", 0, df$status)))
+```
+
+```{r echo=FALSE}
+df$length <- ifelse(df$length == "n/a", "< 1 year", df$length)
+northeast <- c("CT","ME", "MA","NH","RI","VT","NJ","NY","PA")
+midwest <- c("IN","IL","MI","OH","WI","IA","KS","MN","MO","NE", "ND","SD")
+west <- c("AZ","CO","ID","NM","MT","UT","NV","WY","AK","CA","HI","OR","WA")
+south <- c("DE","DC","FL","GA","MD","NC","SC","VA","WV","AL","KY","MS","TN","AR","LA","OK","TX")
+
+df$region <- ifelse(df$state %in% northeast, "Northeast", ifelse(df$state %in% midwest, "Midwest", ifelse(df$state %in% west, "West", ifelse(df$state %in% south, "South", "Other"))))
+
+df$statusText <- ifelse(df$status == 1, "Good", ifelse(df$status == 0, "Bad", df$status))
+df <- na.omit(df)
+
+df$status = as.numeric(as.character(df$status))
+df2 <- subset(df, status <= 1 & length != "n/a")
+df2 <- subset(df2, select=-c(state))
+```
+
+```{r echo=FALSE}
+require("ggplot2")
+p1 <-ggplot(data=df2, aes(x=amount, color=statusText)) + 
+      geom_histogram(binwidth=10000, fill="white")
+p2 <-ggplot(data=df2, aes(x=openAcc, color=statusText)) + 
+      geom_bar(fill="white")
+p3 <-ggplot(data=df2, aes(x=payment, color=statusText)) + 
+      geom_histogram(binwidth=100, fill="white")  
+p4 <-ggplot(data=df2, aes(x=revolRatio, color=statusText))+ 
+      geom_histogram(binwidth=.10, fill="white")
+p5 <-ggplot(data=df2, aes(x=log(income), color=statusText))+ 
+      geom_histogram(binwidth=1, fill="white")
+p6 <-ggplot(data=df2, aes(x=debtIncRat, color=statusText))+ 
+      geom_histogram(binwidth=.25, fill="white")
+p7 <-ggplot(data=df2, aes(x=region, color=statusText))+ 
+      geom_bar(fill="white")
+p8 <-ggplot(data=df2, aes(x=kader:::cuberoot(avgBal), color=statusText)) + 
+      geom_histogram(binwidth=5, fill="white")
+p9 <-ggplot(data=df2, aes(x=grade, color=statusText)) + 
+      geom_bar(fill="white")
+p10 <-ggplot(data=df2, aes(x=rate, color=statusText)) + 
+      geom_histogram(binwidth=.025, fill="white")
+grid.arrange(p1, p2, p3, p6, p9, p10, nrow=3)
+
+tapply(df2$income, df2$statusText, summary)
+```
+
+```{r echo=FALSE, message=FALSE}
+set.seed(1234)
+specs = c(training = .8, test = .2)
+g = sample(cut(seq(nrow(df2)), nrow(df2)*cumsum(c(0,specs)), labels = names(specs)))
+res = split(df2, g)
+sapply(res, nrow)/nrow(df2)
+training <- res$training
+test <- res$test
+```
+
+```{r echo=FALSE}
+training2 <- subset(training, select=-c(totalPaid, statusText))
+training2 <- subset(training2, select=-c(totalRevBal,avgBal))
+```
+
+```{r echo=FALSE}
+trainingFit <-glm(status~., data=training2, family = "binomial")
+anova(trainingFit, test = 'Chisq')
+summary(trainingFit)
+predicted <- predict(trainingFit,test,type='response')
+
+```
+```{r echo=FALSE}
+threshold <- 0.5
+predLoan <- cut(predicted, breaks = c(-Inf, threshold, Inf), labels = c(0, 1))
+
+cTab <- table(test$status, predLoan) 
+addmargins(cTab)
+p <- sum(diag(cTab)) / sum(cTab)
+p1 <- cTab[2, 2]/(cTab[2,2]+cTab[1,2])
+p0 <- cTab[1, 1]/(cTab[1,1]+cTab[2,1])
+print(paste("Accuracy for good loans is :", p1))
+print(paste("Accuracy for bad loans is :", p0))
+print(paste("Combined accuracy is :", p))
+
+```
+
+
+```{r echo=FALSE}
+
+threshold2 <- 0.67
+predLoan <- cut(predicted, breaks = c(-Inf, threshold2, Inf), labels = c(0, 1))
+
+cTab <- table(test$status, predLoan) 
+addmargins(cTab)
+p <- sum(diag(cTab)) / sum(cTab)
+p1 <- cTab[2, 2]/(cTab[2,2]+cTab[1,2])
+p0 <- cTab[1, 1]/(cTab[1,1]+cTab[2,1])
+print(paste("Accuracy for good loans is :", p1))
+print(paste("Accuracy for bad loans is :", p0))
+print(paste("Combined accuracy is :", p))
+```
+
+
+
+```{r echo=FALSE}
+thresholds <- seq(0.05,0.9,0.05)
+accuracy <- NULL
+for (i in seq(along = thresholds)){
+    prediction <- ifelse(predicted >= thresholds[i], 1, 0)
+accuracy <- c(accuracy,length(which(test$status ==prediction))/length(prediction)*100)
+}
+plot(thresholds, accuracy, pch =18,type='b',col= "blue",
+     main ="Logistic Regression", xlab="Threshold", ylab = "Combined Accuracy %")
+```
+
+```{r echo=FALSE}
+test$profit <- test$totalPaid - test$amount
+```
+
+```{r echo=FALSE}
+threshold8 <- 0.35
+test$projected <- ifelse(predicted >= threshold8, 1, 0)
+test$predictedProfit <- ifelse(test$projected == 1, test$totalPaid - test$amount,0)
+sums <- sum(test$predictedProfit)
+profitPercent <- round(sums/sum(test$profit),4)
+print(paste("threshold =", threshold8, "profit =", round(sums,2),profitPercent-1))
+
+threshold9 <- 0.4
+test$projected <- ifelse(predicted >= threshold9, 1, 0)
+test$predictedProfit <- ifelse(test$projected == 1, test$totalPaid - test$amount,0)
+sums <- sum(test$predictedProfit)
+profitPercent <- round(sums/sum(test$profit),4)
+print(paste("threshold =", threshold9, "profit =", round(sums,2),profitPercent-1))
+
+threshold10 <- 0.45
+test$projected <- ifelse(predicted >= threshold10, 1, 0)
+test$predictedProfit <- ifelse(test$projected == 1, test$totalPaid - test$amount,0)
+sums <- sum(test$predictedProfit)
+profitPercent <- round(sums/sum(test$profit),4)
+print(paste("threshold =", threshold10, "profit =", round(sums,2),profitPercent-1))
+
+threshold4 <- 0.5
+test$projected <- ifelse(predicted >= threshold4, 1, 0)
+test$predictedProfit <- ifelse(test$projected == 1, test$totalPaid - test$amount,0)
+sums <- sum(test$predictedProfit)
+profitPercent <- round(sums/sum(test$profit),4)
+print(paste("threshold =", threshold4, "profit =", round(sums,2),profitPercent-1))
+
+threshold5 <- 0.55
+test$projected <- ifelse(predicted >= threshold5, 1, 0)
+test$predictedProfit <- ifelse(test$projected == 1, test$totalPaid - test$amount,0)
+sums <- sum(test$predictedProfit)
+profitPercent <- round(sums/sum(test$profit),4)
+print(paste("threshold =", threshold5, "profit =", round(sums,2),profitPercent-1))
+
+threshold6 <- 0.6
+test$projected <- ifelse(predicted >= threshold6, 1, 0)
+test$predictedProfit <- ifelse(test$projected == 1, test$totalPaid - test$amount,0)
+sums <- sum(test$predictedProfit)
+profitPercent <- round(sums/sum(test$profit),4)
+print(paste("threshold =", threshold6, "profit =", round(sums,2),profitPercent-1))
+
+threshold7 <- 0.65
+test$projected <- ifelse(predicted >= threshold7, 1, 0)
+test$predictedProfit <- ifelse(test$projected == 1, test$totalPaid - test$amount,0)
+sums <- sum(test$predictedProfit)
+profitPercent <- round(sums/sum(test$profit),4)
+print(paste("threshold =", threshold7, "profit =", round(sums,2),profitPercent-1))
+
+threshold3 <- 0.67
+test$projected <- ifelse(predicted >= threshold3, 1, 0)
+test$predictedProfit <- ifelse(test$projected == 1, test$totalPaid - test$amount,0)
+sums <- sum(test$predictedProfit)
+profitPercent <- round(sums/sum(test$profit),4)
+print(paste("threshold =", threshold3, "profit =", round(sums,2),profitPercent-1))
+
+```
